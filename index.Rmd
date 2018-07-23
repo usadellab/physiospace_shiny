@@ -1,0 +1,60 @@
+---
+title: "Physiospace Web Interface"
+author: "Dr. Asis Hallab"
+date: "July 3, 2018"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Input
+
+```{r, echo = FALSE}
+sliderInput("bins", "Number of bins:", min = 1, max = 50, value = 30)
+
+fileInput("file1", "Choose CSV File",
+                multiple = TRUE,
+                accept = c("text/csv",
+                         "text/comma-separated-values,text/plain",
+                         ".csv"))
+
+#tbl.1 <- read.table(input$file, sep="\t", stringsAsFactors = FALSE)
+reactive(
+  if(! is.null(input$file1$datapath)) { 
+    df <- read.csv(input$file1$datapath) 
+    summary(df)
+    }
+  
+  )
+
+  
+
+renderPlot({
+  x <- faithful[, 2]  # Old Faithful Geyser data
+  bins <- seq(min(x), max(x), length.out = input$bins + 1)
+
+  # draw the histogram with the specified number of bins
+  hist(x, breaks = bins, col = 'darkgray', border = 'white')
+})
+```
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

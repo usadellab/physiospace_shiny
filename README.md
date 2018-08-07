@@ -15,7 +15,7 @@ Be warned that this takes quite some time as many dependencies have to be compil
 
 Just execute
 ```
-docker run -p 3838:3838 --rm -it physiospace:latest
+docker run -p 3838:3838 -it physiospace:latest
 ```
 and in your web browser go to [localhost:3838](http://localhost:3838).
 

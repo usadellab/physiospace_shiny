@@ -162,9 +162,9 @@ server <- function(input, output, session) {
                                       progress$set(message = "Analyzing data. This can take a while..", value = 0)
                                       tryCatch({
                                         PhysioSpaceMethods::calculatePhysioMap(
-                                          InputData = calc.phys.map.inp()[, 1:5],
+                                          InputData = calc.phys.map.inp(),
                                           Space = HS_LUKK_Space,
-                                          #PARALLEL = TRUE,
+                                          PARALLEL = TRUE,
                                           NumbrOfCores = getOption("mc.cores", 1)
                                         )
                                       }, error = function(e) {

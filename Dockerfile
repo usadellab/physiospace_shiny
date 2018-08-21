@@ -18,14 +18,14 @@ RUN apt-get update && apt-get dist-upgrade -y && \
     gdebi -n ss-latest.deb && \
     rm -f version.txt ss-latest.deb && \
     R -e "install.packages(c('shiny', 'rmarkdown', 'devtools'), repos='https://cran.rstudio.com/')" && \
-    R -e "require(devtools); devtools::install_github('JRC-COMBINE/PhysioSpaceMethods'); devtools::install_github('JRC-COMBINE/HumanPhysioSpace'); devtools::install_github('JRC-COMBINE/PlantPhysioSpace'); devtools::install_bioc('BiocInstaller'); devtools::install_bioc('SummarizedExperiment');" \
+    R -e "require(devtools); devtools::install_bioc('BiocInstaller'); devtools::install_bioc('SummarizedExperiment'); devtools::install_github('JRC-COMBINE/PhysioSpaceMethods'); devtools::install_github('JRC-COMBINE/HumanPhysioSpace'); devtools::install_github('JRC-COMBINE/PlantPhysioSpace');" \
     cp -R /usr/local/lib/R/site-library/shiny/examples/* /srv/shiny-server/ && \
     rm -rf /var/lib/apt/lists/*
 
 EXPOSE 3838
 
 RUN rm /srv/shiny-server/*
-COPY ./index.Rmd /srv/shiny-server/
+COPY ./app.R /srv/shiny-server/
 COPY shiny-server.sh /usr/bin/shiny-server.sh
 RUN chmod u+x /usr/bin/shiny-server.sh
 

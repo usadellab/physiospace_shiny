@@ -93,7 +93,13 @@ ui <- fluidPage(titlePanel("Physiospace Web Interface"),
                   ,
                   
                   # Main panel for displaying outputs:
-                  mainPanel(plotOutput(outputId = "physSpacePlot"))
+                  mainPanel(
+                    conditionalPanel(
+                      condition = "output.physSpacePlot",
+                      downloadButton("downloadPhysSpaceMap", "Download results table")
+                    ),
+                    plotOutput(outputId = "physSpacePlot")
+                  )
                 ))
 
 # Define the server:
@@ -121,62 +127,64 @@ server <- function(input, output, session) {
     }
   })
   
+  # Generate input for the function calculatePhysioMap:
+  calc.phys.map.inp <- reactive({
+    if (!is.null(input$file1$datapath)) {
+      # Read uploaded data as matrix
+      counts.df <- as.matrix(
+        read.table(
+          input$file1$datapath,
+          sep = ",",
+          quote = '"',
+          comment.char = '',
+          header = TRUE,
+          stringsAsFactors = FALSE
+        )
+      )
+      # row-names must be gene names in the first column
+      rownames(counts.df) <-
+        counts.df[, 1]
+      # Normalize read counts as deviations from mean
+      counts.df - apply(counts.df, 1, mean)
+    } else if (isValid(input$upGenes) &&
+               isValid(input$downGenes)) {
+      # Just use a list of significantly up- and down-regulated genes:
+      list(input$upGenes, input$downGenes)
+    }
+  })
+  
+  # Calculate the Physiospace Map
+  physio.map <- reactive({
+    # Create a Progress object
+    progress <-
+      shiny::Progress$new()
+    # Make sure it closes when we exit this reactive, even if there's an error
+    on.exit(progress$close())
+    # Show progress message
+    progress$set(message = "Analyzing data. This can take a while..", value = 0)
+    tryCatch({
+      PhysioSpaceMethods::calculatePhysioMap(
+        InputData = calc.phys.map.inp()[, 1:5],
+        Space = HS_LUKK_Space,
+        #PARALLEL = TRUE,
+        NumbrOfCores = getOption("mc.cores", 1)
+      )
+    }, error = function(e) {
+      showNotification(
+        paste("An unexpected error has occurred. Please try again.", e),
+        duration = 6,
+        type = 'error'
+      )
+    }, finally = {
+      # Do nothing. This is needed to prevent the shiny App from dying.
+    })
+  })
+  
   # Calculate the Physiospace Mapping:
   calc.physio.map <- observeEvent(input$compute,
                                   if (isValid(input$upGenes) &&
                                       isValid(input$downGenes) ||
                                       isValid(input$file1$datapath)) {
-                                    # Generate input for the function calculatePhysioMap:
-                                    calc.phys.map.inp <- reactive({
-                                      if (!is.null(input$file1$datapath)) {
-                                        # Read uploaded data as matrix
-                                        counts.df <- as.matrix(
-                                          read.table(
-                                            input$file1$datapath,
-                                            sep = ",",
-                                            quote = '"',
-                                            comment.char = '',
-                                            header = TRUE,
-                                            stringsAsFactors = FALSE
-                                          )
-                                        )
-                                        # row-names must be gene names in the first column
-                                        rownames(counts.df) <-
-                                          counts.df[, 1]
-                                        # Normalize read counts as deviations from mean
-                                        counts.df - apply(counts.df, 1, mean)
-                                      } else if (isValid(input$upGenes) &&
-                                                 isValid(input$downGenes)) {
-                                        # Just use a list of significantly up- and down-regulated genes:
-                                        list(input$upGenes, input$downGenes)
-                                      }
-                                    })
-                                    # Calculate the Physiospace Map
-                                    physio.map <- reactive({
-                                      # Create a Progress object
-                                      progress <-
-                                        shiny::Progress$new()
-                                      # Make sure it closes when we exit this reactive, even if there's an error
-                                      on.exit(progress$close())
-                                      # Show progress message
-                                      progress$set(message = "Analyzing data. This can take a while..", value = 0)
-                                      tryCatch({
-                                        PhysioSpaceMethods::calculatePhysioMap(
-                                          InputData = calc.phys.map.inp(),
-                                          Space = HS_LUKK_Space,
-                                          PARALLEL = TRUE,
-                                          NumbrOfCores = getOption("mc.cores", 1)
-                                        )
-                                      }, error = function(e) {
-                                        showNotification(
-                                          paste("An unexpected error has occurred. Please try again.", e),
-                                          duration = 6,
-                                          type = 'error'
-                                        )
-                                      }, finally = {
-                                        # Do nothing. This is needed to prevent the shiny App from dying.
-                                      })
-                                    })
                                     # Plot the results
                                     output$physSpacePlot <-
                                       renderPlot({
@@ -197,6 +205,22 @@ server <- function(input, output, session) {
                                       })
                                     
                                   })
+  
+  # Enable downloading of results-table:
+  output$downloadPhysSpaceMap <- downloadHandler(
+    filename = function() {
+      "physioSpace_Results.csv"
+    },
+    content = function(file) {
+      write.table(
+        physio.map(),
+        file,
+        row.names = FALSE,
+        sep = ",",
+        quote = FALSE
+      )
+    }
+  )
   
   # Enable the user to start the computation, if all required input has been provided:
   output$receivedAllInput <- reactive({

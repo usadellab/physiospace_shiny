@@ -17,6 +17,14 @@ isValid <-
     !is.null(x) && !all(is.na(x)) && length(x) > 0
   }
 
+allOrSelection <-
+  function(sub.set, compl.set) {
+    if (isValid(sub.set) && isValid(compl.set)) {
+      intersect(sub.set, compl.set)
+    } else if (!isValid(sub.set) && isValid(compl.set))
+      compl.set
+  }
+
 ui <- fluidPage(titlePanel("Physiospace Web Interface"),
                 
                 # Sidebar layout with input and output definitions
@@ -74,32 +82,36 @@ ui <- fluidPage(titlePanel("Physiospace Web Interface"),
                         multiple = TRUE
                       )
                     ),
+                    conditionalPanel(condition = "output.receivedAllInput",
+                                     actionButton("compute", "Compute")),
                     conditionalPanel(
-                      condition = "output.receivedAllInput",
+                      condition = "output.done === 'true'",
+                      downloadButton("downloadPhysSpaceMap", "Download results table"),
                       sliderInput(
                         "reducedPlotting",
-                        paste(
-                          "If non-zero this is the number of significant rows plotted per gene.",
-                          "Note, that you can change the value and the plot without clicking 'Compute' again."
-                        ),
+                        "If non-zero this is the number of significant rows plotted per gene.",
                         min = 0,
                         max = 20,
                         value = 0,
                         step = 1
                       ),
-                      actionButton("compute", "Compute")
+                      selectizeInput(
+                        "physSpaceTissues",
+                        "Select subset of Physio-Space tissues to display in plot. Leave empty to display all.",
+                        c(),
+                        multiple = TRUE
+                      ),
+                      selectizeInput(
+                        "experimentTissues",
+                        "Select subset of your experiment's tissues to display in plot. Leave empty to display all.",
+                        c(),
+                        multiple = TRUE
+                      )
                     )
                   )
                   ,
-                  
                   # Main panel for displaying outputs:
-                  mainPanel(
-                    conditionalPanel(
-                      condition = "output.physSpacePlot",
-                      downloadButton("downloadPhysSpaceMap", "Download results table")
-                    ),
-                    plotOutput(outputId = "physSpacePlot")
-                  )
+                  mainPanel(plotOutput(outputId = "physSpacePlot"))
                 ))
 
 # Define the server:
@@ -153,58 +165,83 @@ server <- function(input, output, session) {
     }
   })
   
+  
   # Calculate the Physiospace Map
-  physio.map <- reactive({
-    # Create a Progress object
-    progress <-
-      shiny::Progress$new()
-    # Make sure it closes when we exit this reactive, even if there's an error
-    on.exit(progress$close())
-    # Show progress message
-    progress$set(message = "Analyzing data. This can take a while..", value = 0)
-    tryCatch({
-      PhysioSpaceMethods::calculatePhysioMap(
-        InputData = calc.phys.map.inp()[, 1:5],
-        Space = HS_LUKK_Space,
-        #PARALLEL = TRUE,
-        NumbrOfCores = getOption("mc.cores", 1)
-      )
-    }, error = function(e) {
-      showNotification(
-        paste("An unexpected error has occurred. Please try again.", e),
-        duration = 6,
-        type = 'error'
-      )
-    }, finally = {
-      # Do nothing. This is needed to prevent the shiny App from dying.
-    })
+  phys.map <- reactive({
+    if (as.logical(input$compute) && (
+      isValid(input$upGenes) &&
+      isValid(input$downGenes) ||
+      isValid(input$file1$datapath)
+    )) {
+      # Create a Progress object
+      progress <-
+        shiny::Progress$new()
+      # Make sure it closes when we exit this reactive, even if there's an error
+      on.exit(progress$close())
+      # Show progress message
+      progress$set(message = "Analyzing data. This can take a while..", value = 0)
+      tryCatch({
+        PhysioSpaceMethods::calculatePhysioMap(
+          InputData = calc.phys.map.inp(),
+          Space = get(input$physSpace),
+          PARALLEL = TRUE,
+          NumbrOfCores = getOption("mc.cores", 1)
+        )
+      }, error = function(e) {
+        showNotification(
+          paste("An unexpected error has occurred. Please try again.", e),
+          duration = 6,
+          type = 'error'
+        )
+      }, finally = {
+        # Do nothing. This is needed to prevent the shiny App from dying in case of an error.
+      })
+    }
   })
   
-  # Calculate the Physiospace Mapping:
-  calc.physio.map <- observeEvent(input$compute,
-                                  if (isValid(input$upGenes) &&
-                                      isValid(input$downGenes) ||
-                                      isValid(input$file1$datapath)) {
-                                    # Plot the results
-                                    output$physSpacePlot <-
-                                      renderPlot({
-                                        if (!is.null(physio.map()) && is.matrix(physio.map())) {
-                                          PhysioHeatmap(
-                                            PhysioResults = physio.map(),
-                                            main = "RNA-seq vs Microarray",
-                                            SymmetricColoring = TRUE,
-                                            SpaceClustering = TRUE,
-                                            Space = HS_LUKK_Space,
-                                            ReducedPlotting = (if (!is.null(input$reducedPlotting) &&
-                                                                   as.integer(input$reducedPlotting) > 0) {
-                                              as.integer(input$reducedPlotting)
-                                            } else
-                                              FALSE)
-                                          )
-                                        }
-                                      })
-                                    
-                                  })
+  # Enable selection of tissues to reduce large plots:
+  observe({
+    if (!is.null(phys.map())) {
+      updateSelectizeInput(
+        session,
+        "physSpaceTissues",
+        choices = rownames(phys.map()),
+        server = TRUE
+      )
+      updateSelectizeInput(
+        session,
+        "experimentTissues",
+        choices = colnames(phys.map()),
+        server = TRUE
+      )
+    }
+  })
+  
+  # Plot the results
+  output$physSpacePlot <-
+    renderPlot({
+      if (!is.null(phys.map()) &&
+          is.matrix(phys.map())) {
+        pm.cols <-
+          allOrSelection(input$experimentTissues, colnames(phys.map()))
+        pm.rows <-
+          allOrSelection(input$physSpaceTissues, rownames(phys.map()))
+        p.h <- PhysioHeatmap(
+          PhysioResults = phys.map()[pm.rows, pm.cols, drop=FALSE],
+          main = "RNA-seq vs Microarray",
+          SymmetricColoring = TRUE,
+          SpaceClustering = TRUE,
+          Space = HS_LUKK_Space,
+          ReducedPlotting = (if (!is.null(input$reducedPlotting) &&
+                                 as.integer(input$reducedPlotting) > 0) {
+            as.integer(input$reducedPlotting)
+          } else
+            FALSE)
+        )
+      }
+    })
+  
+  
   
   # Enable downloading of results-table:
   output$downloadPhysSpaceMap <- downloadHandler(
@@ -213,7 +250,7 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       write.table(
-        physio.map(),
+        phys.map(),
         file,
         row.names = FALSE,
         sep = ",",
@@ -228,6 +265,15 @@ server <- function(input, output, session) {
       isValid(input$downGenes) || isValid(input$file1$datapath)
   })
   outputOptions(output, 'receivedAllInput', suspendWhenHidden = FALSE)
+  
+  # Signal success in computation:
+  output$done <- reactive({
+    if (!is.null(phys.map()))
+      'true'
+    else
+      'false'
+  })
+  outputOptions(output, 'done', suspendWhenHidden = FALSE)
 }
 
 # Start the shiny server

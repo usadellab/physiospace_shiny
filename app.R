@@ -2,6 +2,7 @@ require(shiny)
 require(PhysioSpaceMethods)
 require(HumanPhysioSpace)
 require(PlantPhysioSpace)
+require(ggplot2)
 require(parallel)
 # Allow upload of 1GB tables
 options(shiny.maxRequestSize = 1024 ^ 3)
@@ -86,7 +87,8 @@ ui <- fluidPage(titlePanel("Physiospace Web Interface"),
                                      actionButton("compute", "Compute")),
                     conditionalPanel(
                       condition = "output.done === 'true'",
-                      downloadButton("downloadPhysSpaceMap", "Download results table"),
+                      tags$hr(),
+                      tags$h3('Plot settings'),
                       sliderInput(
                         "reducedPlotting",
                         "If non-zero this is the number of significant rows plotted per gene.",
@@ -106,7 +108,12 @@ ui <- fluidPage(titlePanel("Physiospace Web Interface"),
                         "Select subset of your experiment's tissues to display in plot. Leave empty to display all.",
                         c(),
                         multiple = TRUE
-                      )
+                      ),
+                      tags$hr(),
+                      tags$h3('Results'),
+                      downloadButton("downloadPhysSpaceMap", "Download results table (Physio-Map)"),
+                      tags$br(),
+                      downloadButton("downloadPhysioHeatMap", "Download plot (PDF)")
                     )
                   )
                   ,
@@ -218,30 +225,37 @@ server <- function(input, output, session) {
   })
   
   # Plot the results
+  plotPhysioHeatMap <- reactive({
+    if (!is.null(phys.map()) &&
+        is.matrix(phys.map())) {
+      pm.cols <-
+        allOrSelection(input$experimentTissues, colnames(phys.map()))
+      pm.rows <-
+        allOrSelection(input$physSpaceTissues, rownames(phys.map()))
+      
+      p.h <- PhysioHeatmap(
+        PhysioResults = phys.map()[pm.rows, pm.cols, drop = FALSE],
+        main = "PhysioSpace Heatmap",
+        SymmetricColoring = TRUE,
+        SpaceClustering = TRUE,
+        # The PhysioMap's rows are the columns of the PhysioSpace:
+        Space = get(input$physSpace)[, pm.rows, drop = FALSE],
+        ReducedPlotting = (if (!is.null(input$reducedPlotting) &&
+                               as.integer(input$reducedPlotting) > 0) {
+          as.integer(input$reducedPlotting)
+        } else
+          FALSE)
+      )
+      # See stackoverflow.com/questions/27276994/outputting-shiny-non-ggplot-plot-to-pdf
+      dev.copy2pdf(file = "plot.pdf")
+      p.h
+    }
+  })
+  # Make plot available in output:
   output$physSpacePlot <-
     renderPlot({
-      if (!is.null(phys.map()) &&
-          is.matrix(phys.map())) {
-        pm.cols <-
-          allOrSelection(input$experimentTissues, colnames(phys.map()))
-        pm.rows <-
-          allOrSelection(input$physSpaceTissues, rownames(phys.map()))
-        p.h <- PhysioHeatmap(
-          PhysioResults = phys.map()[pm.rows, pm.cols, drop=FALSE],
-          main = "RNA-seq vs Microarray",
-          SymmetricColoring = TRUE,
-          SpaceClustering = TRUE,
-          Space = HS_LUKK_Space,
-          ReducedPlotting = (if (!is.null(input$reducedPlotting) &&
-                                 as.integer(input$reducedPlotting) > 0) {
-            as.integer(input$reducedPlotting)
-          } else
-            FALSE)
-        )
-      }
+      plotPhysioHeatMap()
     })
-  
-  
   
   # Enable downloading of results-table:
   output$downloadPhysSpaceMap <- downloadHandler(
@@ -252,11 +266,23 @@ server <- function(input, output, session) {
       write.table(
         phys.map(),
         file,
-        row.names = FALSE,
+        row.names = TRUE,
         sep = ",",
         quote = FALSE
       )
     }
+  )
+  
+  # Enable downloading of the Plot in PDF:
+  output$downloadPhysioHeatMap <- downloadHandler(
+    filename =
+      'physioHeatMap.pdf'
+    ,
+    content = function(file) {
+      # See stackoverflow.com/questions/27276994/outputting-shiny-non-ggplot-plot-to-pdf
+      file.copy("plot.pdf", file)
+    },
+    contentType = 'application/pdf'
   )
   
   # Enable the user to start the computation, if all required input has been provided:

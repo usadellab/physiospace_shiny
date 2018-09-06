@@ -2,7 +2,6 @@ require(shiny)
 require(PhysioSpaceMethods)
 require(HumanPhysioSpace)
 require(PlantPhysioSpace)
-require(ggplot2)
 require(parallel)
 # Allow upload of 1GB tables
 options(shiny.maxRequestSize = 1024 ^ 3)

@@ -5,6 +5,8 @@ require(PlantPhysioSpace)
 require(parallel)
 # Allow upload of 1GB tables
 options(shiny.maxRequestSize = 1024 ^ 3)
+# Show all errors in detail:
+options(shiny.sanitize.errors = FALSE)
 # Allow for maximum parallel computation - use all available cores
 options(mc.cores = detectCores())
 
@@ -246,7 +248,7 @@ server <- function(input, output, session) {
           FALSE)
       )
       # See stackoverflow.com/questions/27276994/outputting-shiny-non-ggplot-plot-to-pdf
-      dev.copy2pdf(file = "plot.pdf")
+      dev.copy2pdf(file = "/home/shiny/plot.pdf")
       p.h
     }
   })
@@ -279,7 +281,7 @@ server <- function(input, output, session) {
     ,
     content = function(file) {
       # See stackoverflow.com/questions/27276994/outputting-shiny-non-ggplot-plot-to-pdf
-      file.copy("plot.pdf", file)
+      file.copy("/home/shiny/plot.pdf", file)
     },
     contentType = 'application/pdf'
   )

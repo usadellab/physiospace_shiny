@@ -192,7 +192,6 @@ server <- function(input, output, session) {
         PhysioSpaceMethods::calculatePhysioMap(
           InputData = calc.phys.map.inp(),
           Space = get(input$physSpace),
-          PARALLEL = TRUE,
           NumbrOfCores = getOption("mc.cores", 1)
         )
       }, error = function(e) {

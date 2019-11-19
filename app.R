@@ -164,8 +164,7 @@ server <- function(input, output, session) {
       # row-names must be gene names in the first column
       rownames(counts.df) <-
         counts.df[, 1]
-      # Normalize read counts as deviations from mean
-      counts.df - apply(counts.df, 1, mean)
+      counts.df[,-1,drop=FALSE]
     } else if (isValid(input$upGenes) &&
                isValid(input$downGenes)) {
       # Just use a list of significantly up- and down-regulated genes:
@@ -233,8 +232,16 @@ server <- function(input, output, session) {
       pm.rows <-
         allOrSelection(input$physSpaceTissues, rownames(phys.map()))
       
+      PhysioScores = phys.map()[pm.rows, pm.cols, drop = FALSE]
+      if(any(is.infinite(range(PhysioScores)))){
+      	Mx <- max(PhysioScores[is.finite(PhysioScores)])
+      	Mn <- min(PhysioScores[is.finite(PhysioScores)])
+		PhysioScores[PhysioScores > Mx] <- 2*Mx
+		PhysioScores[PhysioScores < Mn] <- -2*abs(Mn)
+      }
+      
       p.h <- PhysioHeatmap(
-        PhysioResults = phys.map()[pm.rows, pm.cols, drop = FALSE],
+        PhysioResults = PhysioScores,
         main = "PhysioSpace Heatmap",
         SymmetricColoring = TRUE,
         SpaceClustering = TRUE,
